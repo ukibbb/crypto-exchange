@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -162,6 +163,7 @@ type OrderBook struct {
 	asks []*Limit // selling
 	bids []*Limit // buying
 
+	mu         sync.RWMutex
 	AsksLimits map[float64]*Limit
 	BidsLimits map[float64]*Limit
 
@@ -215,6 +217,9 @@ func (ob *OrderBook) PlaceMarketOrder(o *Order) []Match {
 // limit orders providing liquidity
 func (ob *OrderBook) PlaceLimitOrder(price float64, o *Order) {
 	var limit *Limit
+
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
 
 	if o.Bid {
 		limit = ob.BidsLimits[price]
