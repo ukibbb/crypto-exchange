@@ -16,10 +16,11 @@ type Match struct {
 }
 
 type Order struct {
-	ID        int64
-	UserID    int64
-	Size      float64
-	Bid       bool
+	ID     int64
+	UserID int64
+	Size   float64
+	Bid    bool
+	// limit is a bucket containing orders for the same price of different size.
 	Limit     *Limit
 	Timestamp int64
 }
@@ -109,6 +110,9 @@ func (l *Limit) Fill(o *Order) []Match {
 	)
 
 	for _, order := range l.Orders {
+		if o.IsFilled() {
+			break
+		}
 		match := l.fillOrder(order, o)
 		matches = append(matches, match)
 
@@ -118,9 +122,6 @@ func (l *Limit) Fill(o *Order) []Match {
 			ordersToDelete = append(ordersToDelete, order)
 		}
 
-		if o.IsFilled() {
-			break
-		}
 	}
 	for _, order := range ordersToDelete {
 		l.DeleteOrder(order)
@@ -159,9 +160,18 @@ func (l *Limit) fillOrder(a, b *Order) Match {
 	}
 }
 
+type Trade struct {
+	Size      float64
+	Price     float64
+	Bid       bool
+	Timestamp int64
+}
+
 type OrderBook struct {
 	asks []*Limit // selling
 	bids []*Limit // buying
+
+	trades []*Trade
 
 	mu         sync.RWMutex
 	AsksLimits map[float64]*Limit
@@ -174,6 +184,7 @@ func NewOrderBook() *OrderBook {
 	return &OrderBook{
 		asks:       []*Limit{},
 		bids:       []*Limit{},
+		trades:     []*Trade{},
 		AsksLimits: make(map[float64]*Limit),
 		BidsLimits: make(map[float64]*Limit),
 		Orders:     make(map[int64]*Order),
@@ -193,7 +204,7 @@ func (ob *OrderBook) PlaceMarketOrder(o *Order) []Match {
 			matches = append(matches, limitMatches...)
 
 			if len(limit.Orders) == 0 {
-				ob.clearLimit(true, limit)
+				ob.clearLimit(false, limit)
 			}
 		}
 	} else {
@@ -209,6 +220,18 @@ func (ob *OrderBook) PlaceMarketOrder(o *Order) []Match {
 				ob.clearLimit(true, limit)
 			}
 		}
+	}
+
+	for _, match := range matches {
+		trade := &Trade{
+			Price:     match.Price,
+			Size:      match.SizeFilled,
+			Timestamp: time.Now().UnixNano(),
+			Bid:       o.Bid,
+		}
+
+		ob.trades = append(ob.trades, trade)
+
 	}
 
 	return matches
@@ -267,6 +290,10 @@ func (ob *OrderBook) CancelOrder(o *Order) {
 	limit := o.Limit
 	limit.DeleteOrder(o)
 	delete(ob.Orders, o.ID)
+
+	if len(limit.Orders) == 0 {
+		ob.clearLimit(o.Bid, limit)
+	}
 
 }
 
