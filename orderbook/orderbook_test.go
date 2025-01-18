@@ -12,6 +12,27 @@ func assert(t *testing.T, a, b any) {
 	}
 }
 
+func TestLastMarketTrades(t *testing.T) {
+	ob := NewOrderBook()
+	price := 10000.0
+	sellOrder := NewOrder(false, 10, 0)
+	ob.PlaceLimitOrder(price, sellOrder)
+
+	marketOrder := NewOrder(true, 10, 0)
+	matches := ob.PlaceMarketOrder(marketOrder)
+	assert(t, len(matches), 1)
+	match := matches[0]
+
+	assert(t, len(ob.Trades), 1)
+
+	trade := ob.Trades[0]
+	assert(t, trade.Price, price)
+	assert(t, trade.Bid, marketOrder.Bid)
+
+	assert(t, trade.Size, match.SizeFilled)
+
+}
+
 func TestLimit(t *testing.T) {
 	l := NewLimit(10_000)
 	buyOrderA := NewOrder(true, 5.0, 0)
