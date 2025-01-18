@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Match struct {
@@ -43,6 +45,13 @@ func NewOrder(bid bool, size float64, userID int64) *Order {
 
 func (o *Order) String() string {
 	return fmt.Sprintf("[size: %.2f]", o.Size)
+}
+
+func (o *Order) Type() string {
+	if o.Bid {
+		return "BID"
+	}
+	return "ASK"
 }
 
 func (o *Order) IsFilled() bool {
@@ -171,7 +180,7 @@ type OrderBook struct {
 	asks []*Limit // selling
 	bids []*Limit // buying
 
-	trades []*Trade
+	Trades []*Trade
 
 	mu         sync.RWMutex
 	AsksLimits map[float64]*Limit
@@ -184,7 +193,7 @@ func NewOrderBook() *OrderBook {
 	return &OrderBook{
 		asks:       []*Limit{},
 		bids:       []*Limit{},
-		trades:     []*Trade{},
+		Trades:     []*Trade{},
 		AsksLimits: make(map[float64]*Limit),
 		BidsLimits: make(map[float64]*Limit),
 		Orders:     make(map[int64]*Order),
@@ -230,7 +239,7 @@ func (ob *OrderBook) PlaceMarketOrder(o *Order) []Match {
 			Bid:       o.Bid,
 		}
 
-		ob.trades = append(ob.trades, trade)
+		ob.Trades = append(ob.Trades, trade)
 
 	}
 
@@ -261,6 +270,15 @@ func (ob *OrderBook) PlaceLimitOrder(price float64, o *Order) {
 			ob.AsksLimits[price] = limit
 		}
 	}
+	logrus.WithFields(logrus.Fields{
+		"price": limit.Price, // limit is a bucket containning orders of different sizes
+		// from different peapole but sitting on the same price lvl
+		// and ppl can place ordrers of different sizes of the same limit
+		// if sombody will place market order it will eat that limit order by order until limit is gone
+		"type":   o.Type(),
+		"size":   o.Size,
+		"userID": o.UserID,
+	}).Info("new limit order")
 	ob.Orders[o.ID] = o
 	limit.AddOrder(o)
 }
